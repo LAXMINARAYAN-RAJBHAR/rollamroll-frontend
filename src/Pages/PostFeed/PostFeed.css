@@ -1804,3 +1804,31 @@
   display: block;
   margin-top: 4px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   COMMENT GIF/STICKER ATTACHMENTS
+   Append this block to the end of PostFeed.css. No new wrapper class is
+   needed for the emoji/GIF/sticker trigger button — the reply row now
+   reuses the existing .pf-attach-wrap (already position: relative) that
+   the main comment input row already had.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pf-comment-media {
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 10px;
+  display: block;
+  margin: 4px 0;
+}
+
+.pf-comment-media--sticker {
+  max-width: 110px;
+  max-height: 110px;
+}
+
+/* The reply row (.pf-reply-input-row) now has an attach button too —
+   give it the same small gap/alignment treatment the main comment row
+   already gets implicitly from its flex layout. */
+.pf-reply-input-row .pf-attach-wrap {
+  flex-shrink: 0;
+}

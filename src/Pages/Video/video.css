@@ -1323,3 +1323,44 @@
   display: block;
   margin-top: 6px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   COMMENT GIF/STICKER ATTACHMENTS + EMOJI PICKER TRIGGER
+   Append this block to the end of video.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.video_comment_media {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 10px;
+  display: block;
+  margin: 6px 0;
+}
+
+.video_comment_media--sticker {
+  max-width: 120px;
+  max-height: 120px;
+}
+
+/* Wraps the 🙂 trigger button so the CommentMediaPicker (position:
+   absolute) has a positioned ancestor to anchor against — video.css
+   has no existing wrapper for this since comments previously had no
+   emoji/GIF/sticker button at all. */
+.yt_comment_emoji_wrap {
+  position: relative;
+  display: inline-flex;
+  margin-right: auto;
+}
+
+.yt_comment_emoji_btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.yt_comment_emoji_btn:hover {
+  background: var(--zx-surface2, #fef2f2);
+}

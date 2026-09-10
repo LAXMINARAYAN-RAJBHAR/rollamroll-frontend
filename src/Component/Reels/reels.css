@@ -1124,3 +1124,44 @@ body.reels-open .reel_item   { height: 100dvh; }
   display: block;
   margin-top: 4px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   COMMENT GIF/STICKER ATTACHMENTS + EMOJI PICKER TRIGGER
+   Append this block to the end of reels.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.reel_comment_media {
+  max-width: 160px;
+  max-height: 160px;
+  border-radius: 10px;
+  display: block;
+  margin: 4px 0;
+}
+
+.reel_comment_media--sticker {
+  max-width: 100px;
+  max-height: 100px;
+}
+
+/* Wraps the 🙂 trigger button so the CommentMediaPicker (position:
+   absolute) has a positioned ancestor to anchor against — the comment
+   input/reply rows previously had no emoji/GIF/sticker button at all. */
+.reel_comment_emoji_wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.reel_comment_emoji_btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  color: #4c4589;
+}
+.reel_comment_emoji_btn:hover {
+  background: rgba(220, 38, 38, 0.08);
+}

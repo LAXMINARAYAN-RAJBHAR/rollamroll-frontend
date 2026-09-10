@@ -55,11 +55,13 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
 
   // NEW: select list for post_comments, shared across fetchPosts,
   // handleRealtimeInsert, and ensurePostLoaded below — now also pulls
-  // saved_by (kebab-menu "Save" action) and parent_comment_id (one-level
-  // reply threading), in addition to the existing liked_by/disliked_by.
-  // See comment_features_migration.sql for the columns this depends on.
+  // saved_by (kebab-menu "Save" action), parent_comment_id (one-level
+  // reply threading), and attachment_url/attachment_type (GIF/sticker
+  // comments), in addition to the existing liked_by/disliked_by. See
+  // comment_features_migration.sql and the attachment_url/
+  // attachment_type migration for the columns this depends on.
   const POST_COMMENTS_SELECT =
-    "id, text, username, created_at, liked_by, disliked_by, saved_by, parent_comment_id";
+    "id, text, username, created_at, liked_by, disliked_by, saved_by, parent_comment_id, attachment_url, attachment_type";
 
   const enrichPost = useCallback(
     (p) => ({
@@ -413,12 +415,18 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
   // post owner as before, and ALSO notifies the parent comment's author
   // when replying (unless that's the same person, to avoid a double
   // notification, or the person replying to their own comment).
-  const handleComment = async (postId, text, parentId = null) => {
+  //
+  // NEW: also accepts an optional `attachment` — { url, type } — for a
+  // GIF/sticker picked from CommentMediaPicker in PostCard.jsx. When
+  // present, the comment posts immediately with that as its
+  // attachment_url/attachment_type, independent of whatever text was
+  // passed (PostCard always passes "" as text for a media-only comment).
+  const handleComment = async (postId, text, parentId = null, attachment = null) => {
     if (!currentUser || currentUser === "anonymous") {
       window.dispatchEvent(new CustomEvent("openLogin"));
       return;
     }
-    if (!text.trim()) return;
+    if (!text.trim() && !attachment) return;
 
     // NEW: look up the post so we know who to notify below (handleReaction
     // and handleShare already do this same lookup; handleComment
@@ -433,8 +441,10 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
       .insert({
         post_id: postId,
         username: currentUser,
-        text: text.trim(),
+        text: text.trim() || null,
         parent_comment_id: parentId,
+        attachment_url: attachment?.url || null,
+        attachment_type: attachment?.type || null,
       })
       .select()
       .single();
@@ -457,7 +467,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         recipientUsername: parentComment.username,
         senderUsername: currentUser,
         type: "comment",
-        message: `${currentUser} replied to your comment: "${text.trim().slice(0, 60)}"`,
+        message: `${currentUser} replied to your comment: "${text.trim().slice(0, 60) || (attachment ? (attachment.type === "sticker" ? "🏷️ Sticker" : "🎬 GIF") : "")}"`,
         contentId: postId,
         contentType: "post",
       });
@@ -476,7 +486,7 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
         recipientUsername: post.username,
         senderUsername: currentUser,
         type: "comment",
-        message: `${currentUser} commented on your post: "${text.trim().slice(0, 60)}"`,
+        message: `${currentUser} commented on your post: "${text.trim().slice(0, 60) || (attachment ? (attachment.type === "sticker" ? "🏷️ Sticker" : "🎬 GIF") : "")}"`,
         contentId: postId,
         contentType: "post",
       });
@@ -485,22 +495,25 @@ const PostFeed = ({ sideNavbar, currentUser: currentUserProp }) => {
     // NEW: notify anyone @mentioned in the comment — skipping the
     // commenter themselves and anyone already notified above (post
     // owner / parent comment author), so a mention doesn't triple up.
-    extractMentions(text).forEach((mentioned) => {
-      if (
-        mentioned === currentUser ||
-        mentioned === post?.username ||
-        mentioned === parentComment?.username
-      )
-        return;
-      notifyUser({
-        recipientUsername: mentioned,
-        senderUsername: currentUser,
-        type: "mention",
-        message: `${currentUser} mentioned you in a comment: "${text.trim().slice(0, 60)}"`,
-        contentId: postId,
-        contentType: "post",
+    // Skipped entirely for a media-only comment (no text to mention in).
+    if (text.trim()) {
+      extractMentions(text).forEach((mentioned) => {
+        if (
+          mentioned === currentUser ||
+          mentioned === post?.username ||
+          mentioned === parentComment?.username
+        )
+          return;
+        notifyUser({
+          recipientUsername: mentioned,
+          senderUsername: currentUser,
+          type: "mention",
+          message: `${currentUser} mentioned you in a comment: "${text.trim().slice(0, 60)}"`,
+          contentId: postId,
+          contentType: "post",
+        });
       });
-    });
+    }
   };
 
   // NEW: like/dislike a single comment. `type` is "like" or "dislike";

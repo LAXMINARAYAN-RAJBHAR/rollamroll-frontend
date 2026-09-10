@@ -14,9 +14,8 @@ import useNetworkQuality from "../../hooks/useNetworkQuality";
 import { getAdaptiveVideoSrc } from "../../utils/videoQuality";
 import ReportModal from "../../Component/Moderation/ReportModal";
 import ExpandableText from "../../Component/ExpandableText/ExpandableText";
-// NEW: shared emoji/GIF/sticker picker for the comment box.
-import EmojiGifStickerPicker from "../../Component/EmojiGifStickerPicker/EmojiGifStickerPicker";
 import AdSlot from "../../Component/Ads/AdSlot";
+import CommentMediaPicker from "../../Component/Shared/CommentMediaPicker";
 // NOTE: notifyUser() is no longer imported/used anywhere in this file.
 // Like/comment notifications are owned by the notify_on_like /
 // notify_on_comment DB triggers (client-side calls were removed earlier
@@ -75,18 +74,11 @@ const stubTranslateToHindi = (text) => {
   return translated === text ? `${text} (डेमो अनुवाद उपलब्ध नहीं)` : translated;
 };
 
-// ── Media comment detection — a comment/reply whose text is just a GIF
-// or sticker URL (inserted via EmojiGifStickerPicker's onMediaSelect)
-// renders as an image instead of plain text. Mirrors Reels.jsx.
-const MEDIA_COMMENT_REGEX = /^https?:\/\/\S+\.(gif|webp|png|jpe?g)(\?\S*)?$/i;
-const isMediaComment = (text) =>
-  typeof text === "string" && MEDIA_COMMENT_REGEX.test(text.trim());
-
 // ── Single comment row — used for both top-level comments and their
 //    (one level deep) replies. Renders the kebab menu (Share/Report/
 //    Save), Like/Dislike with counts, a Reply button (top-level only),
-//    and the Translate-to-Hindi toggle. Mirrors ReelCommentRow in
-//    Reels.jsx, styled for the light youtube-style comment section here.
+//    the Translate-to-Hindi toggle, and — NEW — an attached GIF/sticker
+//    image when the comment has one (comment.attachmentUrl).
 const VideoCommentRow = ({
   comment,
   currentUser,
@@ -133,17 +125,16 @@ const VideoCommentRow = ({
             </div>
           </div>
         </div>
-        <div className="otherCommentSectionComment">
-          {isMediaComment(comment.text) ? (
-            <img
-              src={comment.text}
-              alt="comment media"
-              className="video_comment_media"
-            />
-          ) : (
-            displayText
-          )}
-        </div>
+        {comment.attachmentUrl && (
+          <img
+            src={comment.attachmentUrl}
+            alt={comment.attachmentType === "sticker" ? "sticker" : "GIF"}
+            className={`video_comment_media${comment.attachmentType === "sticker" ? " video_comment_media--sticker" : ""}`}
+          />
+        )}
+        {displayText && (
+          <div className="otherCommentSectionComment">{displayText}</div>
+        )}
         <div className="yt_comment_action_row">
           <button
             className={`yt_comment_like_btn${iLiked ? " yt_comment_like_active" : ""}`}
@@ -160,9 +151,11 @@ const VideoCommentRow = ({
           {!isReply && (
             <button className="yt_comment_reply_btn" onClick={onReplyClick}>Reply</button>
           )}
-          <button className="yt_comment_translate_btn" onClick={onToggleTranslate}>
-            {isTranslated ? "Show original" : "Translate to Hindi"}
-          </button>
+          {displayText && (
+            <button className="yt_comment_translate_btn" onClick={onToggleTranslate}>
+              {isTranslated ? "Show original" : "Translate to Hindi"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -338,10 +331,12 @@ const Video = ({ sideNavbar }) => {
   const [translatedIds, setTranslatedIds] = useState(() => new Set());
   const [savedToast, setSavedToast] = useState(false);
   const [reportCommentTarget, setReportCommentTarget] = useState(null);
-  // NEW: whether the comment box's emoji/GIF/sticker picker is open, and
-  // its click-outside ref.
-  const [showCommentPicker, setShowCommentPicker] = useState(false);
-  const commentPickerRef = useRef(null);
+
+  // NEW: Emoji/GIF/Sticker picker open state — one for the main comment
+  // box, one for whichever reply row is currently open. Both reset
+  // whenever the reply target changes (see onReplyClick below).
+  const [showCommentEmoji, setShowCommentEmoji] = useState(false);
+  const [showReplyEmoji, setShowReplyEmoji] = useState(false);
 
   // NEW: lets the person hide the Like/Dislike/Share/Fullscreen row while
   // in fullscreen (toggled from the ⋮ "More" menu), so the video isn't
@@ -430,19 +425,6 @@ const Video = ({ sideNavbar }) => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // NEW: close the comment box's emoji/GIF/sticker picker on an outside
-  // click, same pattern as the "More" menu's outside-click effect above.
-  useEffect(() => {
-    if (!showCommentPicker) return;
-    const handler = (e) => {
-      if (commentPickerRef.current && !commentPickerRef.current.contains(e.target)) {
-        setShowCommentPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showCommentPicker]);
 
   // ── Track fullscreen state across all vendor-prefixed events, so the
   //    button icon (Fullscreen / FullscreenExit) always reflects reality —
@@ -817,12 +799,19 @@ const Video = ({ sideNavbar }) => {
     setTimeout(() => setShareToast(false), 2500);
   };
 
-  // CHANGED: extracted the insert into postComment() so a typed
-  // comment/reply AND a GIF/sticker picked from EmojiGifStickerPicker
-  // (handleCommentMediaSelect below) share the same insert +
-  // local-state-append path.
-  const postComment = async (text, parentId = null) => {
-    if (!text || !text.trim()) return;
+  // CHANGED: now accepts an optional parentId — omitted (or null) for a
+  // fresh top-level comment, or a top-level comment's id when posting a
+  // reply. Reads from either `message` (top-level) or replyText (reply),
+  // resetting the right one on success.
+  //
+  // NEW: also accepts an optional `attachment` — { url, type } — for a
+  // GIF/sticker picked from CommentMediaPicker. When present, the
+  // comment posts immediately with that as its attachment_url/
+  // attachment_type, independent of whatever's currently typed (mirrors
+  // how picking a GIF/sticker sends instantly in the chat panels).
+  const handleCommentSubmit = async (parentId = null, attachment = null) => {
+    const text = parentId ? replyText : message;
+    if (!text.trim() && !attachment) return;
     const userId = localStorage.getItem("userId");
     if (!userId) {
       alert("Please login to comment");
@@ -835,8 +824,10 @@ const Video = ({ sideNavbar }) => {
         username: loggedInUser,
         content_id: String(id),
         content_type: "video",
-        text: text.trim(),
+        text: text.trim() || null,
         parent_comment_id: parentId,
+        attachment_url: attachment?.url || null,
+        attachment_type: attachment?.type || null,
       })
       .select()
       .single();
@@ -852,37 +843,22 @@ const Video = ({ sideNavbar }) => {
           dislikedBy: [],
           savedBy: [],
           parentId: data.parent_comment_id || null,
+          attachmentUrl: data.attachment_url || null,
+          attachmentType: data.attachment_type || null,
         },
       ]);
       // Comment notifications are handled by the notify_on_comment DB
       // trigger on the comments table — no client-side notifyUser()
       // call here.
     }
-  };
-
-  // CHANGED: now accepts an optional parentId — omitted (or null) for a
-  // fresh top-level comment, or a top-level comment's id when posting a
-  // reply. Reads from either `message` (top-level) or replyText (reply),
-  // resetting the right one on success. The actual insert now lives in
-  // postComment() above, shared with handleCommentMediaSelect.
-  const handleCommentSubmit = async (parentId = null) => {
-    const text = parentId ? replyText : message;
-    await postComment(text, parentId);
     if (parentId) {
       setReplyText("");
       setReplyingToId(null);
+      setShowReplyEmoji(false);
     } else {
       setMessage("");
+      setShowCommentEmoji(false);
     }
-  };
-
-  // NEW: a GIF/sticker picked from EmojiGifStickerPicker posts
-  // immediately as a top-level comment — its URL becomes the comment's
-  // text, and VideoCommentRow detects + renders it as an image via
-  // isMediaComment().
-  const handleCommentMediaSelect = ({ url }) => {
-    setShowCommentPicker(false);
-    postComment(url, null);
   };
 
   // NEW: Like / Dislike a single comment (top-level or reply) — same
@@ -1078,9 +1054,11 @@ const Video = ({ sideNavbar }) => {
   }, [id]);
 
   // CHANGED: now also pulls liked_by / disliked_by / saved_by /
-  // parent_comment_id (see comment_features_migration.sql), and orders
-  // ascending so top-level comments and their replies build into a
-  // proper thread — see the render below.
+  // parent_comment_id / attachment_url / attachment_type (see
+  // comment_features_migration.sql + the attachment_url/attachment_type
+  // migration for GIF/sticker comments), and orders ascending so
+  // top-level comments and their replies build into a proper thread —
+  // see the render below.
   useEffect(() => {
     const loadComments = async () => {
       setCommentsLoading(true);
@@ -1100,6 +1078,8 @@ const Video = ({ sideNavbar }) => {
             dislikedBy: c.disliked_by || [],
             savedBy: c.saved_by || [],
             parentId: c.parent_comment_id || null,
+            attachmentUrl: c.attachment_url || null,
+            attachmentType: c.attachment_type || null,
           })),
         );
       } else {
@@ -1645,36 +1625,35 @@ const Video = ({ sideNavbar }) => {
                 }}
               />
               <div className="addAComment">
-                <div className="video_comment_input_row">
-                  <input
-                    type="text"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="addACommentInput"
-                    placeholder="Add a comment"
-                    onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit()}
-                  />
-                  {/* NEW: emoji/GIF/sticker picker for the comment box.
-                      Emoji append to the message; a GIF/sticker posts
-                      immediately via handleCommentMediaSelect. */}
-                  <div className="video_comment_attach_wrap" ref={commentPickerRef}>
+                <input
+                  type="text"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="addACommentInput"
+                  placeholder="Add a comment"
+                  onKeyDown={(e) => e.key === "Enter" && handleCommentSubmit()}
+                />
+                <div className="cancelSubmitComment">
+                  <span className="yt_comment_emoji_wrap">
                     <button
                       type="button"
-                      className="video_comment_emoji_btn"
-                      onClick={() => setShowCommentPicker((v) => !v)}
-                      aria-label="Emoji, GIF or sticker"
+                      className="yt_comment_emoji_btn"
+                      onClick={() => setShowCommentEmoji((v) => !v)}
+                      aria-label="Emoji, GIFs and stickers"
                     >
                       🙂
                     </button>
-                    {showCommentPicker && (
-                      <EmojiGifStickerPicker
+                    {showCommentEmoji && (
+                      <CommentMediaPicker
                         onEmojiSelect={(emoji) => setMessage((t) => t + emoji)}
-                        onMediaSelect={handleCommentMediaSelect}
+                        onMediaSelect={({ url, type }) => {
+                          setShowCommentEmoji(false);
+                          handleCommentSubmit(null, { url, type });
+                        }}
+                        onClose={() => setShowCommentEmoji(false)}
                       />
                     )}
-                  </div>
-                </div>
-                <div className="cancelSubmitComment">
+                  </span>
                   <div className="cancelcomment" onClick={() => setMessage("")}>
                     Cancel
                   </div>
@@ -1716,7 +1695,10 @@ const Video = ({ sideNavbar }) => {
                       onShare={() => handleShareComment(c)}
                       onReport={() => { setReportCommentTarget(c); setCommentMenuOpenId(null); }}
                       onToggleTranslate={() => toggleTranslate(c.id)}
-                      onReplyClick={() => setReplyingToId((v) => (v === c.id ? null : c.id))}
+                      onReplyClick={() => {
+                        setReplyingToId((v) => (v === c.id ? null : c.id));
+                        setShowReplyEmoji(false);
+                      }}
                     />
 
                     {replyingToId === c.id && (
@@ -1731,6 +1713,26 @@ const Video = ({ sideNavbar }) => {
                           autoFocus
                         />
                         <div className="cancelSubmitComment">
+                          <span className="yt_comment_emoji_wrap">
+                            <button
+                              type="button"
+                              className="yt_comment_emoji_btn"
+                              onClick={() => setShowReplyEmoji((v) => !v)}
+                              aria-label="Emoji, GIFs and stickers"
+                            >
+                              🙂
+                            </button>
+                            {showReplyEmoji && (
+                              <CommentMediaPicker
+                                onEmojiSelect={(emoji) => setReplyText((t) => t + emoji)}
+                                onMediaSelect={({ url, type }) => {
+                                  setShowReplyEmoji(false);
+                                  handleCommentSubmit(c.id, { url, type });
+                                }}
+                                onClose={() => setShowReplyEmoji(false)}
+                              />
+                            )}
+                          </span>
                           <div className="cancelcomment" onClick={() => setReplyingToId(null)}>Cancel</div>
                           <div className="cancelcomment" onClick={() => handleCommentSubmit(c.id)}>Reply</div>
                         </div>
@@ -1752,7 +1754,10 @@ const Video = ({ sideNavbar }) => {
                         onShare={() => handleShareComment(r)}
                         onReport={() => { setReportCommentTarget(r); setCommentMenuOpenId(null); }}
                         onToggleTranslate={() => toggleTranslate(r.id)}
-                        onReplyClick={() => setReplyingToId(c.id)}
+                        onReplyClick={() => {
+                          setReplyingToId(c.id);
+                          setShowReplyEmoji(false);
+                        }}
                       />
                     ))}
                   </div>
