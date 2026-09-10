@@ -1849,3 +1849,188 @@
   background: transparent;
   max-height: 160px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   REELS STRIP (Posts feed) — Instagram-Stories-style horizontal scroll,
+   sits above the composer. Append this block to the end of PostFeed.css.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pf-reels-strip {
+  margin-bottom: 14px;
+  margin-top: 10px;
+}
+
+.pf-reels-strip-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.pf-reels-strip-zbadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, var(--zx-primary), var(--zx-accent2));
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  font-family: Arial Black, sans-serif;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.pf-reels-strip-title {
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--zx-text);
+  letter-spacing: 0.3px;
+  flex: 1;
+}
+
+.pf-reels-strip-viewall {
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--zx-primary);
+  text-decoration: none;
+}
+.pf-reels-strip-viewall:hover {
+  color: var(--zx-accent1);
+}
+
+.pf-reels-strip-track {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px 2px 6px;
+}
+.pf-reels-strip-track::-webkit-scrollbar {
+  display: none;
+}
+
+.pf-reel-card {
+  flex: 0 0 auto;
+  width: 110px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  user-select: none;
+}
+
+.pf-reel-thumb-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--zx-border);
+  background: var(--zx-surface2);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.pf-reel-card:hover .pf-reel-thumb-wrap {
+  border-color: var(--zx-primary);
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.18);
+  transform: translateY(-2px);
+}
+
+.pf-reel-thumb-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(26, 20, 20, 0.55) 0%, transparent 55%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pf-reel-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.25s;
+}
+
+.pf-reel-thumb-video {
+  position: absolute;
+  inset: 0;
+}
+
+.pf-reel-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--zx-text3);
+  background: var(--zx-surface2);
+}
+
+.pf-reel-play-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(26, 20, 20, 0.55);
+  color: #fff;
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 1px;
+}
+
+.pf-reel-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  z-index: 2;
+  background: rgba(26, 20, 20, 0.75);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+.pf-reel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--zx-text);
+  margin-top: 5px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pf-reel-user {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--zx-primary2);
+  margin-top: 2px;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pf-reel-user:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .pf-reel-card {
+    width: 92px;
+  }
+}
