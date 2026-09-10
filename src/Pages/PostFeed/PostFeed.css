@@ -1832,3 +1832,20 @@
 .pf-reply-input-row .pf-attach-wrap {
   flex-shrink: 0;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST COMPOSER — GIF/STICKER PREVIEW
+   Append this block to the end of PostFeed.css (same file the other
+   PostFeed.css.additions.css block goes into — safe to paste both in
+   one go).
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pf-gif-preview-wrap {
+  max-width: 240px;
+}
+
+.pf-gif-preview--sticker {
+  object-fit: contain;
+  background: transparent;
+  max-height: 160px;
+}

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../../config/supabase";
 import axios from "axios";
-import EmojiPicker from "./EmojiPicker";
+import CommentMediaPicker from "../../Component/Shared/CommentMediaPicker";
 import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
 
 // NOTE: no cap on image count anymore — ImageGrid/HomeImageGrid already
@@ -192,6 +192,12 @@ const PostComposer = ({ currentUser, onPost }) => {
   const [text, setText] = useState("");
   const [imageFiles, setImageFiles] = useState([]);
   const [videoFile, setVideoFile] = useState(null);
+  // NEW: a GIF or sticker picked from CommentMediaPicker — { url, type }.
+  // Already hosted by Giphy, so unlike imageFiles/videoFile it needs no
+  // upload step; it's mutually exclusive with both (a post can carry
+  // images, a video, OR one GIF/sticker, not a mix), mirroring the
+  // existing image-vs-video exclusivity below.
+  const [gifStickerAttachment, setGifStickerAttachment] = useState(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkPreview, setLinkPreview] = useState(null);
   const [fetchingPreview, setFetchingPreview] = useState(false);
@@ -214,7 +220,8 @@ const PostComposer = ({ currentUser, onPost }) => {
   }, []);
 
   const initials = currentUser.slice(0, 2).toUpperCase();
-  const canPost = text.trim() || imageFiles.length > 0 || videoFile || linkUrl;
+  const canPost =
+    text.trim() || imageFiles.length > 0 || videoFile || linkUrl || gifStickerAttachment;
 
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files || []);
@@ -224,6 +231,11 @@ const PostComposer = ({ currentUser, onPost }) => {
 
     if (videoFile) {
       setError("A post can have images or a video, not both. Remove the video first.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    if (gifStickerAttachment) {
+      setError("A post can't combine a GIF/sticker with photos. Remove the GIF/sticker first.");
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
@@ -248,6 +260,11 @@ const PostComposer = ({ currentUser, onPost }) => {
 
     if (imageFiles.length > 0) {
       setError("A post can have images or a video, not both. Remove the images first.");
+      if (videoRef.current) videoRef.current.value = "";
+      return;
+    }
+    if (gifStickerAttachment) {
+      setError("A post can't combine a GIF/sticker with a video. Remove the GIF/sticker first.");
       if (videoRef.current) videoRef.current.value = "";
       return;
     }
@@ -282,6 +299,21 @@ const PostComposer = ({ currentUser, onPost }) => {
     setImageFiles([]);
     if (fileRef.current) fileRef.current.value = "";
   };
+
+  // NEW: picking a GIF/sticker from CommentMediaPicker. Blocked if
+  // images or a video are already attached (same mutual-exclusion the
+  // image/video pickers already enforce against each other).
+  const handleGifStickerSelect = ({ url, type }) => {
+    setError("");
+    if (imageFiles.length > 0 || videoFile) {
+      setError("A post can't combine a GIF/sticker with photos or a video. Remove those first.");
+      return;
+    }
+    setGifStickerAttachment({ url, type });
+    setShowEmojiPicker(false);
+  };
+
+  const removeGifSticker = () => setGifStickerAttachment(null);
 
   // ── Real link preview: fetches Open Graph metadata (title, description,
   // thumbnail image) from /api/link-preview instead of faking a card from
@@ -361,7 +393,13 @@ const PostComposer = ({ currentUser, onPost }) => {
       let videoUrl = null;
       let thumbnailUrl = null;
 
-      if (imageFiles.length > 0) {
+      if (gifStickerAttachment) {
+        // Already hosted by Giphy — no upload needed. Stored the same
+        // way a regular image post is (image_url/image_urls); GIFs
+        // animate fine straight out of an <img> tag, same as anywhere
+        // else in the app.
+        imageUrls = [gifStickerAttachment.url];
+      } else if (imageFiles.length > 0) {
         const total = imageFiles.length;
         for (let i = 0; i < total; i++) {
           const url = await uploadImage(imageFiles[i].file, (pct) => {
@@ -431,6 +469,7 @@ const PostComposer = ({ currentUser, onPost }) => {
       setText("");
       clearAllImages();
       removeVideo();
+      removeGifSticker();
       setLinkUrl("");
       setLinkPreview(null);
       setFetchingPreview(false);
@@ -444,6 +483,8 @@ const PostComposer = ({ currentUser, onPost }) => {
       setPosting(false);
     }
   };
+
+  const mediaAlreadyAttached = imageFiles.length > 0 || !!videoFile || !!gifStickerAttachment;
 
   return (
     <div className="pf-composer">
@@ -490,6 +531,25 @@ const PostComposer = ({ currentUser, onPost }) => {
                 className="pf-img-clear"
                 onClick={removeVideo}
                 aria-label="Remove video"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* NEW: GIF/sticker preview — same remove-button treatment as
+              the image/video previews above. */}
+          {gifStickerAttachment && (
+            <div className="pf-img-preview-wrap pf-gif-preview-wrap">
+              <img
+                src={gifStickerAttachment.url}
+                alt={gifStickerAttachment.type === "sticker" ? "sticker" : "GIF"}
+                className={`pf-img-preview${gifStickerAttachment.type === "sticker" ? " pf-gif-preview--sticker" : ""}`}
+              />
+              <button
+                className="pf-img-clear"
+                onClick={removeGifSticker}
+                aria-label="Remove GIF/sticker"
               >
                 ✕
               </button>
@@ -561,7 +621,7 @@ const PostComposer = ({ currentUser, onPost }) => {
           <label
             className="pf-attach-btn"
             title="Photo"
-            style={videoFile ? { opacity: 0.4, cursor: "not-allowed" } : {}}
+            style={videoFile || gifStickerAttachment ? { opacity: 0.4, cursor: "not-allowed" } : {}}
           >
             📷
             <input
@@ -571,14 +631,18 @@ const PostComposer = ({ currentUser, onPost }) => {
               multiple
               style={{ display: "none" }}
               onChange={handleImageSelect}
-              disabled={!!videoFile}
+              disabled={!!videoFile || !!gifStickerAttachment}
             />
           </label>
 
           <label
             className="pf-attach-btn"
             title="Video"
-            style={imageFiles.length > 0 ? { opacity: 0.4, cursor: "not-allowed" } : {}}
+            style={
+              imageFiles.length > 0 || gifStickerAttachment
+                ? { opacity: 0.4, cursor: "not-allowed" }
+                : {}
+            }
           >
             🎥
             <input
@@ -587,7 +651,7 @@ const PostComposer = ({ currentUser, onPost }) => {
               accept="video/*"
               style={{ display: "none" }}
               onChange={handleVideoSelect}
-              disabled={imageFiles.length > 0 || !!videoFile}
+              disabled={imageFiles.length > 0 || !!videoFile || !!gifStickerAttachment}
             />
           </label>
 
@@ -602,18 +666,28 @@ const PostComposer = ({ currentUser, onPost }) => {
             onClick={() => setShowFeelings((v) => !v)}
           >😊</button>
 
+          {/* CHANGED: was the plain EmojiPicker (emoji only). Now opens
+              CommentMediaPicker instead, which adds GIF/Sticker tabs
+              alongside Emoji — same component used for comments across
+              Video/Reels/Posts and the chat panels. Picking a GIF/sticker
+              here attaches it to the post (mutually exclusive with
+              photos/video, see handleGifStickerSelect above); it doesn't
+              post immediately the way a comment does, since this is a
+              draft the person is still composing. */}
           <div className="pf-attach-wrap">
             <button
               className="pf-attach-btn"
-              title="Emoji"
+              title="Emoji, GIFs & stickers"
               type="button"
               onClick={() => setShowEmojiPicker((v) => !v)}
+              style={mediaAlreadyAttached && !gifStickerAttachment ? { opacity: 0.4 } : {}}
             >
               🙂
             </button>
             {showEmojiPicker && (
-              <EmojiPicker
-                onSelect={(emoji) => setText((t) => t + emoji)}
+              <CommentMediaPicker
+                onEmojiSelect={(emoji) => setText((t) => t + emoji)}
+                onMediaSelect={handleGifStickerSelect}
                 onClose={() => setShowEmojiPicker(false)}
               />
             )}
