@@ -6,6 +6,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Box from "@mui/material/Box";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import { supabase } from "../../config/supabase";
+import RecordModal from "../RecordModal/RecordModal";
 import { checkContent } from "../../Component/Moderation/useModerationFilter";
 import { notifyConnections } from "../../utils/notifications";
 import { uploadToR2, buildTransformUrl, uploadVideoToR2 } from "../../utils/mediaUpload";
@@ -65,14 +66,8 @@ const VideoUpload = () => {
     if (!user) navigate("/signup");
   }, []);
 
-  // CHANGED: uploadMode is no longer switchable from this screen — the
-  // "🎬 Video / 📱 Shorts / 🔴 Record / Live" toggle was removed since
-  // Reels and Live already have their own dedicated upload/record flows
-  // elsewhere in the app. This screen is now Video-only, EXCEPT when
-  // arriving in a "feature mode" (remix/sound/collab/greenscreen/cut),
-  // which still needs to upload as a reel — that's decided automatically
-  // via location.state, not by any button here.
-  const [uploadMode] = useState(isFeatureMode ? "reel" : "video");
+  const [uploadMode,      setUploadMode]      = useState(isFeatureMode ? "reel" : "video");
+  const [showRecordModal, setShowRecordModal] = useState(false);
   const currentUser = localStorage.getItem("username") || "";
 
   const [inputField, setInputField] = useState({
@@ -150,6 +145,8 @@ const VideoUpload = () => {
     durationRef.current      = "00:00";
     clearLocalPreview();
   };
+
+  const switchMode = (mode) => { setUploadMode(mode); resetState(); };
 
   const updateSpeedAndETA = (loadedBytes, totalBytes) => {
     if (!uploadStartTime.current) return;
@@ -624,7 +621,7 @@ const VideoUpload = () => {
 
   const uploadLabel = isFeatureMode
     ? (banner?.emoji + " " + banner?.label)
-    : "Upload Video";
+    : uploadMode === "reel" ? "Upload Reel" : "Upload Video";
 
   const submitLabel = saving
     ? "Saving..."
@@ -691,14 +688,37 @@ const VideoUpload = () => {
           </div>
         )}
 
+        {!isFeatureMode && (
+          <div className="upload_mode_toggle">
+            <div className={`upload_mode_btn ${uploadMode === "video" ? "active" : ""}`} onClick={() => switchMode("video")}>🎬 Video</div>
+            <div className={`upload_mode_btn ${uploadMode === "reel"  ? "active" : ""}`} onClick={() => switchMode("reel")}>📱 Shorts</div>
+            <div className="upload_mode_btn" onClick={() => setShowRecordModal(true)} style={{ position:"relative", cursor:"pointer" }}>
+              <span style={{ position:"absolute", top:"-4px", right:"-4px", width:"8px", height:"8px", borderRadius:"50%", background:"#ff0000", animation:"recordPulse 1.2s infinite" }} />
+              🔴 Record / Live
+            </div>
+          </div>
+        )}
+
+        {showRecordModal && <RecordModal onClose={() => setShowRecordModal(false)} currentUser={currentUser} />}
+
+        <style>{`
+          @keyframes recordPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(1.3); }
+          }
+        `}</style>
+
         {isFeatureMode && banner?.hint && <p className="upload_mode_hint">{banner.hint}</p>}
+        {!isFeatureMode && uploadMode === "reel" && (
+          <p className="upload_mode_hint">Reels are short vertical videos — they appear in the Reels / Shorts section.</p>
+        )}
 
         <div className="uploadForm">
           <input
             type="text"
             value={inputField.title}
             onChange={(e) => handleOnChangeInput(e, "title")}
-            placeholder={isFeatureMode ? `${banner?.emoji} Title` : "Title of Video"}
+            placeholder={isFeatureMode ? `${banner?.emoji} Title` : uploadMode === "reel" ? "Reel Title" : "Title of Video"}
             className="uploadFormInputs"
           />
           <input
@@ -720,7 +740,7 @@ const VideoUpload = () => {
 
           <div className="upload_file_row">
             <span className="upload_file_label">
-              {isFeatureMode ? `${banner?.emoji} Your Video` : "Video"}
+              {isFeatureMode ? `${banner?.emoji} Your Video` : uploadMode === "reel" ? "Reel Video" : "Video"}
             </span>
             <input type="file" accept="video/mp4,video/webm,video/*" onChange={uploadVideo} style={{ display:"none" }} id="videoInput" />
             <span className="upload_file_btn" onClick={() => document.getElementById("videoInput").click()}>
